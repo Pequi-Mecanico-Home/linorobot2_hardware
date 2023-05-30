@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #include <Arduino.h>
-#include <micro_ros_arduino.h>
+#include <micro_ros_platformio.h>
 #include <stdio.h>
 
 #include <rcl/rcl.h>
@@ -24,6 +24,11 @@
 // #include <sensor_msgs/msg/imu.h>
 #include <geometry_msgs/msg/twist.h>
 #include <geometry_msgs/msg/vector3.h>
+
+
+// #include <tf2/LinearMath/Quaternion.h>
+// #include <Quaternion.h>
+
 
 // #include "config.h"
 // #include "motor.h"
@@ -48,7 +53,7 @@ rcl_publisher_t imu_publisher;
 rcl_subscription_t twist_subscriber;
 
 nav_msgs__msg__Odometry odom_msg;
-sensor_msgs__msg__Imu imu_msg;
+// sensor_msgs__msg__Imu imu_msg;
 geometry_msgs__msg__Twist twist_msg;
 
 rclc_executor_t executor;
@@ -76,6 +81,10 @@ byte incomingByte;
 byte incomingBytePrev;
 unsigned long iTimeFeedback = 0;
 unsigned long iPeriodFeedback = 0;
+
+float theta = 0;
+int telem[2];
+
 
 typedef struct {
   uint16_t start;
@@ -133,7 +142,7 @@ enum states
 //     LR_WHEELS_DISTANCE
 // );
 
-Odometry odometry;
+// Odometry odometry;
 // IMU imu;
 
 void setup() 
@@ -150,10 +159,13 @@ void setup()
     // }
     Serial2.begin(HOVER_SERIAL_BAUD);
 
-    set_microros_transports();
+    set_microros_serial_transports(Serial2);
 }
 
+unsigned long iTimeSend = 0;
+
 void loop() {
+    unsigned long timeNow = millis();
     switch (state) 
     {
         case WAITING_AGENT:
@@ -181,7 +193,9 @@ void loop() {
         default:
             break;
     }
+    iTimeSend = timeNow + TIME_SEND;
 }
+
 
 void controlCallback(rcl_timer_t * timer, int64_t last_call_time) 
 {
@@ -196,7 +210,7 @@ void controlCallback(rcl_timer_t * timer, int64_t last_call_time)
 
 void twistCallback(const void * msgin) 
 {
-    digitalWrite(LED_PIN, !digitalRead(LED_PIN));
+    digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
 
     prev_cmd_time = millis();
 }
@@ -251,7 +265,7 @@ bool createEntities()
 
     // synchronize time with the agent
     syncTime();
-    digitalWrite(LED_PIN, HIGH);
+    digitalWrite(LED_BUILTIN, HIGH);
 
     return true;
 }
@@ -269,7 +283,7 @@ bool destroyEntities()
     rclc_executor_fini(&executor);
     rclc_support_fini(&support);
 
-    digitalWrite(LED_PIN, HIGH);
+    digitalWrite(LED_BUILTIN, HIGH);
     
     return true;
 }
@@ -286,6 +300,14 @@ void fullStop()
     // motor4_controller.brake();
 }
 
+
+// auto createQuaternionMsgFromYaw(double yaw)
+// {
+//   tf2::Quaternion q;
+//   q.setRPY(0, 0, yaw);
+//   return tf2::toMsg(q);
+// }
+
 // ########################## SEND ##########################
 void Send(int16_t uSteer, int16_t uSpeed)
 {
@@ -300,12 +322,12 @@ void Send(int16_t uSteer, int16_t uSpeed)
 }
 
 void Odom() {
-  odom.twist.twist.linear.x = PI * 0.125 * float(Feedback.speedL_meas - Feedback.speedR_meas) / 60.0; // velocidade linear em m/s
-  odom.twist.twist.angular.z = 2.0 * PI * 0.125 * float(Feedback.speedR_meas + Feedback.speedL_meas) / (0.45 * 60.0); // velocidade angular em rad/s
-  theta += odom.twist.twist.angular.z * float(iPeriodFeedback) / 1000.0; // angulo em rad
-  odom.pose.pose.orientation = tf::createQuaternionFromYaw(theta);
-  odom.pose.pose.position.x += odom.twist.twist.linear.x * cos(theta) * float(iPeriodFeedback) / 1000.0; // distancia em m
-  odom.pose.pose.position.y += odom.twist.twist.linear.x * sin(theta) * float(iPeriodFeedback) / 1000.0; // distancia em m
+  odom_msg.twist.twist.linear.x = PI * 0.125 * float(Feedback.speedL_meas - Feedback.speedR_meas) / 60.0; // velocidade linear em m/s
+  odom_msg.twist.twist.angular.z = 2.0 * PI * 0.125 * float(Feedback.speedR_meas + Feedback.speedL_meas) / (0.45 * 60.0); // velocidade angular em rad/s
+  theta += odom_msg.twist.twist.angular.z * float(iPeriodFeedback) / 1000.0; // angulo em rad
+  // odom_msg.pose.pose.orientation = tf::createQuaternionFromYaw(theta);
+  odom_msg.pose.pose.position.x += odom_msg.twist.twist.linear.x * cos(theta) * float(iPeriodFeedback) / 1000.0; // distancia em m
+  odom_msg.pose.pose.position.y += odom_msg.twist.twist.linear.x * sin(theta) * float(iPeriodFeedback) / 1000.0; // distancia em m
   telem[0] = Feedback.batVoltage;
   telem[1] = Feedback.boardTemp;
 }
@@ -387,7 +409,7 @@ void moveBase()
         // twist_msg.linear.y = 0.0;
         twist_msg.angular.z = 0.0;
 
-        digitalWrite(LED_PIN, HIGH);
+        digitalWrite(LED_BUILTIN, HIGH);
     }
     // get the required rpm for each motor based on required velocities, and base used
     // Kinematics::rpm req_rpm = kinematics.getRPM(
@@ -432,7 +454,7 @@ void moveBase()
 
 void publishData()
 {
-    odom_msg = odometry.getData();
+    // odom_msg = odometry.getData();
     // imu_msg = imu.getData();
 
     struct timespec time_stamp = getTime();
@@ -481,9 +503,9 @@ void flashLED(int n_times)
 {
     for(int i=0; i<n_times; i++)
     {
-        digitalWrite(LED_PIN, HIGH);
+        digitalWrite(LED_BUILTIN, HIGH);
         delay(150);
-        digitalWrite(LED_PIN, LOW);
+        digitalWrite(LED_BUILTIN, LOW);
         delay(150);
     }
     delay(1000);
