@@ -25,10 +25,17 @@
 #include <geometry_msgs/msg/twist.h>
 #include <geometry_msgs/msg/vector3.h>
 
+// #include <micro_ros_utilities/type_utilities.h>
+// #include <micro_ros_utilities/string_utilities.h>
+#include <nav_msgs/msg/odometry.h>
 
-// #include <tf2/LinearMath/Quaternion.h>
-// #include <Quaternion.h>
+#include <tf2/LinearMath/Vector3.h>
 
+// #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include <tf2/LinearMath/Quaternion.h>
+#include <tf2/impl/convert.h>
+#include <tf2/transform_datatypes.h>
+#include <tf2/exceptions.h>
 
 // #include "config.h"
 // #include "motor.h"
@@ -301,7 +308,7 @@ void fullStop()
 }
 
 
-// auto createQuaternionMsgFromYaw(double yaw)
+// void createQuaternionMsgFromYaw(double yaw)
 // {
 //   tf2::Quaternion q;
 //   q.setRPY(0, 0, yaw);
@@ -325,7 +332,8 @@ void Odom() {
   odom_msg.twist.twist.linear.x = PI * 0.125 * float(Feedback.speedL_meas - Feedback.speedR_meas) / 60.0; // velocidade linear em m/s
   odom_msg.twist.twist.angular.z = 2.0 * PI * 0.125 * float(Feedback.speedR_meas + Feedback.speedL_meas) / (0.45 * 60.0); // velocidade angular em rad/s
   theta += odom_msg.twist.twist.angular.z * float(iPeriodFeedback) / 1000.0; // angulo em rad
-  // odom_msg.pose.pose.orientation = tf::createQuaternionFromYaw(theta);
+  tf2::Quaternion q;
+  q.setRPY(0.0, 0.0, theta);
   odom_msg.pose.pose.position.x += odom_msg.twist.twist.linear.x * cos(theta) * float(iPeriodFeedback) / 1000.0; // distancia em m
   odom_msg.pose.pose.position.y += odom_msg.twist.twist.linear.x * sin(theta) * float(iPeriodFeedback) / 1000.0; // distancia em m
   telem[0] = Feedback.batVoltage;
